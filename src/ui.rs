@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph, Widget},
 };
 
-use crate::app::App;
+use crate::app::{App, SafetyStatus};
 
 impl Widget for &App {
     /// Renders the user interface widgets.
@@ -39,8 +39,7 @@ impl Widget for &App {
             self.input_text.clone()
         };
 
-        let top_paragraph = Paragraph::new(top_text.as_str())
-            .block(top_block);
+        let top_paragraph = Paragraph::new(top_text.as_str()).block(top_block);
 
         top_paragraph.render(main_layout[0], buf);
 
@@ -48,7 +47,9 @@ impl Widget for &App {
         let middle_block = Block::bordered()
             .title("Output")
             .border_type(BorderType::Rounded)
-            .style(if self.focused_pane == 1 {
+            .style(if self.is_loading_completion {
+                Style::default().fg(Color::Cyan)
+            } else if self.focused_pane == 1 {
                 Style::default().fg(Color::Yellow)
             } else {
                 Style::default()
@@ -63,25 +64,57 @@ impl Widget for &App {
             self.response_text.clone()
         };
 
-        let middle_paragraph = Paragraph::new(middle_text.as_str())
-            .block(middle_block);
+        let middle_paragraph = Paragraph::new(middle_text.as_str()).block(middle_block);
 
         middle_paragraph.render(main_layout[1], buf);
 
         // Bottom pane (not focusable)
         let bottom_block = Block::bordered()
             .title("Safety Check")
-            .border_type(BorderType::Rounded);
+            .border_type(BorderType::Rounded)
+            .style(if self.is_loading_safety_check {
+                Style::default().fg(Color::Cyan)
+            } else {
+                match self.safety_status {
+                    SafetyStatus::Safe => Style::default().fg(Color::Green),
+                    SafetyStatus::Unsafe => Style::default().fg(Color::Red),
+                    SafetyStatus::Unknown => Style::default(),
+                }
+            });
 
-        let bottom_paragraph = Paragraph::new(self.safety_check_text.as_str())
-            .block(bottom_block);
+        let bottom_paragraph = Paragraph::new(self.safety_check_text.as_str()).block(bottom_block);
 
         bottom_paragraph.render(main_layout[2], buf);
 
-        // Status line with green background
-        let status_text = "Ready | Press Up/Down to navigate, Esc to quit";
-        let status_paragraph = Paragraph::new(status_text)
-            .style(Style::default().bg(Color::Green).fg(Color::Black));
+        // Status line with dynamic content
+        let status_text = if self.is_loading_completion {
+            "Loading completion... | Press Up/Down to navigate, Esc to quit"
+        } else if self.is_loading_safety_check {
+            "Running safety check... | Press Up/Down to navigate, Esc to quit"
+        } else {
+            match self.safety_status {
+                SafetyStatus::Safe => {
+                    "Command appears safe | Press Up/Down to navigate, Esc to quit"
+                }
+                SafetyStatus::Unsafe => {
+                    "⚠️ Command may be unsafe | Press Up/Down to navigate, Esc to quit"
+                }
+                SafetyStatus::Unknown => "Ready | Press Up/Down to navigate, Esc to quit",
+            }
+        };
+
+        let status_color = if self.is_loading_completion || self.is_loading_safety_check {
+            Color::Yellow
+        } else {
+            match self.safety_status {
+                SafetyStatus::Safe => Color::Green,
+                SafetyStatus::Unsafe => Color::Red,
+                SafetyStatus::Unknown => Color::Green,
+            }
+        };
+
+        let status_paragraph =
+            Paragraph::new(status_text).style(Style::default().bg(status_color).fg(Color::Black));
 
         status_paragraph.render(main_layout[3], buf);
     }

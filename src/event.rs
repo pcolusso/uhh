@@ -43,6 +43,8 @@ pub enum AppEvent {
     SafetyCheckResponse(String),
     /// Safety check request failed.
     SafetyCheckError(String),
+    /// Execute command and replace current process.
+    ExecuteCommand(String),
 }
 
 /// Terminal event handler.
@@ -53,7 +55,6 @@ pub struct EventHandler {
     /// Event receiver channel.
     receiver: mpsc::UnboundedReceiver<Event>,
 }
-
 
 impl EventHandler {
     /// Constructs a new instance of [`EventHandler`] and spawns a new thread to handle events.

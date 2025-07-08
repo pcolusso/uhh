@@ -5,6 +5,13 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SafetyStatus {
+    Unknown,
+    Safe,
+    Unsafe,
+}
+
 /// Application.
 #[derive(Debug)]
 pub struct App {
@@ -17,6 +24,9 @@ pub struct App {
     pub response_cursor: usize,
     pub events: EventHandler,
     pub client: InferenceEngine,
+    pub is_loading_completion: bool,
+    pub is_loading_safety_check: bool,
+    pub safety_status: SafetyStatus,
 }
 
 impl Default for App {
@@ -30,7 +40,11 @@ impl Default for App {
             input_cursor: 0,
             response_cursor: 0,
             events: EventHandler::new(),
-            client: InferenceEngine::new().unwrap_or_else(|e| panic!("Failed to create client: {}", e)),
+            client: InferenceEngine::new()
+                .unwrap_or_else(|e| panic!("Failed to create client: {}", e)),
+            is_loading_completion: false,
+            is_loading_safety_check: false,
+            safety_status: SafetyStatus::Unknown,
         }
     }
 }
@@ -57,19 +71,35 @@ impl App {
                         self.handle_completion_request(input).await?;
                     }
                     AppEvent::CompletionResponse(response) => {
+                        self.is_loading_completion = false;
                         self.response_text = response.clone();
                         self.response_cursor = self.response_text.len();
                         self.check_completion_request(response).await;
                     }
                     AppEvent::CompletionError(error) => {
+                        self.is_loading_completion = false;
                         self.response_text = format!("Error: {}", error);
                         self.response_cursor = self.response_text.len();
                     }
                     AppEvent::SafetyCheckResponse(response) => {
-                        self.safety_check_text = response;
+                        self.is_loading_safety_check = false;
+                        self.safety_check_text = response.clone();
+
+                        if response.trim().starts_with('Y') {
+                            self.safety_status = SafetyStatus::Safe;
+                        } else if response.trim().starts_with('N') {
+                            self.safety_status = SafetyStatus::Unsafe;
+                        } else {
+                            self.safety_status = SafetyStatus::Unknown;
+                        }
                     }
                     AppEvent::SafetyCheckError(error) => {
+                        self.is_loading_safety_check = false;
                         self.safety_check_text = format!("Safety check error: {}", error);
+                        self.safety_status = SafetyStatus::Unknown;
+                    }
+                    AppEvent::ExecuteCommand(command) => {
+                        self.execute_command(command)?;
                     }
                 },
             }
@@ -92,7 +122,8 @@ impl App {
                 self.events.send(AppEvent::RequestCompletion(input));
             }
             KeyCode::Enter if self.focused_pane == 1 => {
-                // TODO: Define behavior for Return key in second panel
+                let command = self.response_text.clone();
+                self.events.send(AppEvent::ExecuteCommand(command));
             }
             KeyCode::Char(c) if self.focused_pane == 0 => {
                 // Handle text input when top pane is focused
@@ -139,15 +170,22 @@ impl App {
             return Ok(());
         }
 
+        self.is_loading_completion = true;
+        self.safety_status = SafetyStatus::Unknown;
+
         let client = self.client.clone();
         let sender = self.events.sender.clone();
         tokio::spawn(async move {
             match client.imagine_command(input).await {
                 Ok(response) => {
                     if let Some(choice) = response.choices.first() {
-                        let _ = sender.send(Event::App(AppEvent::CompletionResponse(choice.message.content.clone())));
+                        let _ = sender.send(Event::App(AppEvent::CompletionResponse(
+                            choice.message.content.clone(),
+                        )));
                     } else {
-                        let _ = sender.send(Event::App(AppEvent::CompletionError("No response received".to_string())));
+                        let _ = sender.send(Event::App(AppEvent::CompletionError(
+                            "No response received".to_string(),
+                        )));
                     }
                 }
                 Err(e) => {
@@ -160,6 +198,8 @@ impl App {
     }
 
     async fn check_completion_request(&mut self, input: String) {
+        self.is_loading_safety_check = true;
+
         let infer = self.client.clone();
         let sender = self.events.sender.clone();
 
@@ -167,9 +207,13 @@ impl App {
             match infer.inspect_command(input).await {
                 Ok(response) => {
                     if let Some(choice) = response.choices.first() {
-                        let _ = sender.send(Event::App(AppEvent::SafetyCheckResponse(choice.message.content.clone())));
+                        let _ = sender.send(Event::App(AppEvent::SafetyCheckResponse(
+                            choice.message.content.clone(),
+                        )));
                     } else {
-                        let _ = sender.send(Event::App(AppEvent::SafetyCheckError("No safety check response received".to_string())));
+                        let _ = sender.send(Event::App(AppEvent::SafetyCheckError(
+                            "No safety check response received".to_string(),
+                        )));
                     }
                 }
                 Err(e) => {
@@ -179,4 +223,26 @@ impl App {
         });
     }
 
+    /// Execute the command and replace the current process.
+    fn execute_command(&mut self, command: String) -> color_eyre::Result<()> {
+        use std::os::unix::process::CommandExt;
+        use std::process::Command;
+
+        if command.trim().is_empty() {
+            return Ok(());
+        }
+
+        ratatui::restore();
+
+        // Use sh to execute the command
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(command);
+
+        let err = cmd.exec();
+
+        Err(color_eyre::eyre::eyre!(
+            "Failed to execute command: {}",
+            err
+        ))
+    }
 }
