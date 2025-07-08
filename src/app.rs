@@ -40,6 +40,7 @@ impl Default for App {
             input_cursor: 0,
             response_cursor: 0,
             events: EventHandler::new(),
+            // TODO: Handle gracefully
             client: InferenceEngine::new()
                 .unwrap_or_else(|e| panic!("Failed to create client: {}", e)),
             is_loading_completion: false,
@@ -109,8 +110,9 @@ impl App {
 
     /// Handles the key events and updates the state of [`App`].
     pub fn handle_key_events(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
+        // TODO: Messy, but okay for now
         match key_event.code {
-            KeyCode::Esc | KeyCode::Char('q') => self.events.send(AppEvent::Quit),
+            KeyCode::Esc => self.events.send(AppEvent::Quit),
             KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
                 self.events.send(AppEvent::Quit)
             }
@@ -225,6 +227,7 @@ impl App {
 
     /// Execute the command and replace the current process.
     fn execute_command(&mut self, command: String) -> color_eyre::Result<()> {
+        // Sorry windows users.
         use std::os::unix::process::CommandExt;
         use std::process::Command;
 
@@ -234,7 +237,12 @@ impl App {
 
         ratatui::restore();
 
-        // Use sh to execute the command
+        // IDEA: Also place the command on the pasteboard?
+
+        // I originally had wanted to 'stage' the command, as a final sanity check.
+        // Escape codes won't modify the typeahead. Fish does have a commandline function,
+        // but it has to be called inside a fish shell, I can't spawn a subshell and run
+        // that inside.
         let mut cmd = Command::new("sh");
         cmd.arg("-c").arg(command);
 

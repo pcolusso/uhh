@@ -5,7 +5,7 @@ pub mod event;
 pub mod infer;
 pub mod ui;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();

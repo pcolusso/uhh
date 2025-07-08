@@ -41,8 +41,8 @@ impl InferenceEngine {
         })?;
 
         let client = Client::new();
-        //let base_url = "https://openrouter.ai/api/v1".to_string();
-        let base_url = "http://localhost:8888/v1".to_string();
+        let base_url = "https://openrouter.ai/api/v1".to_string();
+        //let base_url = "http://localhost:8888/v1".to_string();
 
         Ok(Self {
             client,
@@ -79,11 +79,11 @@ impl InferenceEngine {
 
     pub async fn imagine_command(&self, request: String) -> Result<CompletionResponse> {
         let request = CompletionRequest {
-            model: "".to_string(),
+            model: "google/gemini-2.5-flash".to_string(),
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content: "You are system designed to emit bash commands, fulfilling the user's request. To achieve your goal, emit a single line command and only that command to achieve the user's request. When possible, use verbose command switches, to convey intent. You can safely assume whatever programs needed to achieve your goal are avaiable to you, such as jq ffmpeg, etc.".into()
+                    content: "You are system designed to emit bash commands, fulfilling the user's request. To achieve your goal, emit a single line command and only that command to achieve the user's request. When possible, use verbose command switches, to convey intent. You can safely assume whatever programs needed to achieve your goal are avaiable to you, such as jq ffmpeg, etc. When emitting your command, emit only the command, with no markdown formatting".into()
                 },
                 Message {
                     role: "user".to_string(),
@@ -99,7 +99,7 @@ impl InferenceEngine {
 
     pub async fn inspect_command(&self, request: String) -> Result<CompletionResponse> {
         let request = CompletionRequest {
-            model: "".to_string(),
+            model: "google/gemini-2.5-flash".to_string(),
             messages: vec![
                 Message {
                     role: "system".into(),

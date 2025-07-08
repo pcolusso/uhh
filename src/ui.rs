@@ -33,7 +33,7 @@ impl Widget for &App {
         let top_text = if self.focused_pane == 0 {
             // Show cursor when focused
             let mut display_text = self.input_text.clone();
-            display_text.insert(self.input_cursor, '|');
+            display_text.insert(self.input_cursor, '█');
             display_text
         } else {
             self.input_text.clone()
@@ -45,7 +45,7 @@ impl Widget for &App {
 
         // Middle pane - twice the size
         let middle_block = Block::bordered()
-            .title("Output")
+            .title("Generated command")
             .border_type(BorderType::Rounded)
             .style(if self.is_loading_completion {
                 Style::default().fg(Color::Cyan)
@@ -55,10 +55,11 @@ impl Widget for &App {
                 Style::default()
             });
 
+        // TODO:Refactor?
         let middle_text = if self.focused_pane == 1 {
             // Show cursor when focused
             let mut display_text = self.response_text.clone();
-            display_text.insert(self.response_cursor, '|');
+            display_text.insert(self.response_cursor, '█');
             display_text
         } else {
             self.response_text.clone()
@@ -68,9 +69,8 @@ impl Widget for &App {
 
         middle_paragraph.render(main_layout[1], buf);
 
-        // Bottom pane (not focusable)
         let bottom_block = Block::bordered()
-            .title("Safety Check")
+            .title("Command review")
             .border_type(BorderType::Rounded)
             .style(if self.is_loading_safety_check {
                 Style::default().fg(Color::Cyan)
