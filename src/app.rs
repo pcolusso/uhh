@@ -1,9 +1,11 @@
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::infer::InferenceEngine;
+use arboard::Clipboard;
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
+use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SafetyStatus {
@@ -219,9 +221,6 @@ impl App {
 
     /// Execute the command and replace the current process.
     fn execute_command(&mut self, command: String) -> color_eyre::Result<()> {
-        // Sorry windows users.
-        use std::os::unix::process::CommandExt;
-        use std::process::Command;
 
         if command.trim().is_empty() {
             return Ok(());
@@ -229,20 +228,45 @@ impl App {
 
         ratatui::restore();
 
-        // IDEA: Also place the command on the pasteboard?
+        if let Ok(mut p) = Clipboard::new() {
+            match p.set_text(&command) {
+                Ok(_) => println!("Uhh: Copied {}", &command),
+                Err(_) => eprintln!("Uhh: Could not copy command to clipboard")
+            }
+        }
+
+        println!("----");
 
         // I originally had wanted to 'stage' the command, as a final sanity check.
         // Escape codes won't modify the typeahead. Fish does have a commandline function,
         // but it has to be called inside a fish shell, I can't spawn a subshell and run
         // that inside.
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(command);
 
-        let err = cmd.exec();
 
-        Err(color_eyre::eyre::eyre!(
-            "Failed to execute command: {}",
-            err
-        ))
+        #[cfg(windows)]
+        {
+            use std::process::Stdio;
+
+            let mut cmd = Command::new("powershell");
+            cmd.arg("-c").arg(command);
+
+            cmd.stdin(Stdio::inherit())
+               .stdout(Stdio::inherit())
+               .stderr(Stdio::inherit());
+
+            if let Err(e) = cmd.spawn() {
+                return Err(color_eyre::eyre::eyre!("Failed to execute command: {}", e))
+            }
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(command);
+
+            let e = cmd.exec();
+            return Err(color_eyre::eyre::eyre!("Failed to execute command: {}", e))
+        }
     }
 }

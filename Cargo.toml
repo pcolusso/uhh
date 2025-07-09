@@ -15,3 +15,4 @@ color-eyre = "0.6.3"
 reqwest = { version = "0.12.22", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 clap = { version = "4.5.40", features = ["derive"] }
+arboard = "3.6.0"
