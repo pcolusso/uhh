@@ -29,11 +29,12 @@ pub struct App {
     pub is_loading_completion: bool,
     pub is_loading_safety_check: bool,
     pub safety_status: SafetyStatus,
+    pub dry_run: bool,
 }
 
 impl App {
     /// Constructs a new instance of [`App`].
-    pub fn new(client: InferenceEngine) -> Self {
+    pub fn new(client: InferenceEngine, dry_run: bool) -> Self {
         Self {
             running: true,
             focused_pane: 0,
@@ -47,6 +48,7 @@ impl App {
             is_loading_completion: false,
             is_loading_safety_check: false,
             safety_status: SafetyStatus::Unknown,
+            dry_run,
         }
     }
 
@@ -233,6 +235,10 @@ impl App {
                 Ok(_) => println!("Uhh: Copied {}", &command),
                 Err(_) => eprintln!("Uhh: Could not copy command to clipboard")
             }
+        }
+
+        if self.dry_run {
+            return Ok(());
         }
 
         println!("----");

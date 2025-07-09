@@ -80,11 +80,11 @@ impl InferenceEngine {
         let mut base_prompt = "You are system designed to emit bash commands, fulfilling the user's request. To achieve your goal, emit a single line command and only that command to achieve the user's request. When possible, use verbose command switches, to convey intent. You can safely assume whatever programs needed to achieve your goal are avaiable to you, such as jq ffmpeg, etc. When emitting your command, emit only the command, with no markdown formatting\n".to_owned();
 
         if let Some(i) = self.input.as_ref() {
-            base_prompt.push_str(&format!("An output path has been provided, it is {i}"));
+            base_prompt.push_str(&format!("An output path has been provided, it is {i}\n"));
         }
 
         if let Some(o) = self.output.as_ref() {
-            base_prompt.push_str(&format!("An output path has been provided, it is {o}"));
+            base_prompt.push_str(&format!("An output path has been provided, it is {o}\n"));
         }
 
         let request = CompletionRequest {

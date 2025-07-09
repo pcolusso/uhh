@@ -17,6 +17,8 @@ struct Args {
     input: Option<String>,
     #[arg(short, long)]
     output: Option<String>,
+    #[arg(long)]
+    dry_run: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -33,7 +35,7 @@ async fn main() -> color_eyre::Result<()> {
     let infer = InferenceEngine::new(api_key, base_url, model_name, args.input, args.output)?;
 
     let terminal = ratatui::init();
-    let result = App::new(infer).run(terminal).await;
+    let result = App::new(infer, args.dry_run).run(terminal).await;
     ratatui::restore();
     result
 }
