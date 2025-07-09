@@ -176,10 +176,8 @@ impl App {
         tokio::spawn(async move {
             match client.imagine_command(input).await {
                 Ok(response) => {
-                    if let Some(choice) = response.choices.first() {
-                        let _ = sender.send(Event::App(AppEvent::CompletionResponse(
-                            choice.message.content.clone(),
-                        )));
+                    if let Some(text) = response.get_text_content() {
+                        let _ = sender.send(Event::App(AppEvent::CompletionResponse(text)));
                     } else {
                         let _ = sender.send(Event::App(AppEvent::CompletionError(
                             "No response received".to_string(),
@@ -204,10 +202,10 @@ impl App {
         tokio::spawn(async move {
             match infer.inspect_command(input).await {
                 Ok(response) => {
-                    if let Some(choice) = response.choices.first() {
-                        let _ = sender.send(Event::App(AppEvent::SafetyCheckResponse(
-                            choice.message.content.clone(),
-                        )));
+                    if let Some(text) = response.get_text_content() {
+                        // These should probably not be using the CompletionResponse raw, the
+                        // helper methods should provide sane types.
+                        let _ = sender.send(Event::App(AppEvent::SafetyCheckResponse(text)));
                     } else {
                         let _ = sender.send(Event::App(AppEvent::SafetyCheckError(
                             "No safety check response received".to_string(),
