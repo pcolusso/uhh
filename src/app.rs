@@ -236,11 +236,12 @@ impl App {
             }
         }
 
-        if self.dry_run {
-            return Ok(());
-        }
 
         println!("----");
+
+        if self.dry_run {
+            std::process::exit(0);
+        }
 
         // I originally had wanted to 'stage' the command, as a final sanity check.
         // Escape codes won't modify the typeahead. Fish does have a commandline function,
