@@ -223,7 +223,6 @@ impl App {
 
     /// Execute the command and replace the current process.
     fn execute_command(&mut self, command: String) -> color_eyre::Result<()> {
-
         if command.trim().is_empty() {
             return Ok(());
         }
@@ -233,7 +232,7 @@ impl App {
         if let Ok(mut p) = Clipboard::new() {
             match p.set_text(&command) {
                 Ok(_) => println!("Uhh: Copied {}", &command),
-                Err(_) => eprintln!("Uhh: Could not copy command to clipboard")
+                Err(_) => eprintln!("Uhh: Could not copy command to clipboard"),
             }
         }
 
@@ -248,7 +247,6 @@ impl App {
         // but it has to be called inside a fish shell, I can't spawn a subshell and run
         // that inside.
 
-
         #[cfg(windows)]
         {
             use std::process::Stdio;
@@ -257,11 +255,11 @@ impl App {
             cmd.arg("-c").arg(command);
 
             cmd.stdin(Stdio::inherit())
-               .stdout(Stdio::inherit())
-               .stderr(Stdio::inherit());
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
             if let Err(e) = cmd.spawn() {
-                return Err(color_eyre::eyre::eyre!("Failed to execute command: {}", e))
+                return Err(color_eyre::eyre::eyre!("Failed to execute command: {}", e));
             }
         }
 
@@ -272,7 +270,7 @@ impl App {
             cmd.arg("-c").arg(command);
 
             let e = cmd.exec();
-            return Err(color_eyre::eyre::eyre!("Failed to execute command: {}", e))
+            return Err(color_eyre::eyre::eyre!("Failed to execute command: {}", e));
         }
     }
 }

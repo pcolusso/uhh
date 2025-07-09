@@ -33,11 +33,17 @@ pub struct InferenceEngine {
     base_url: String,
     model_ident: String,
     input: Option<String>,
-    output: Option<String>
+    output: Option<String>,
 }
 
 impl InferenceEngine {
-    pub fn new(api_key: String, base_url: String, model_ident: String, input: Option<String>, output: Option<String>) -> Result<Self> {
+    pub fn new(
+        api_key: String,
+        base_url: String,
+        model_ident: String,
+        input: Option<String>,
+        output: Option<String>,
+    ) -> Result<Self> {
         let client = Client::new();
 
         Ok(Self {
@@ -46,7 +52,7 @@ impl InferenceEngine {
             input,
             output,
             model_ident,
-            base_url
+            base_url,
         })
     }
 
@@ -92,12 +98,12 @@ impl InferenceEngine {
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content: base_prompt
+                    content: base_prompt,
                 },
                 Message {
                     role: "user".to_string(),
                     content: request,
-                }
+                },
             ],
             max_tokens: Some(1000),
             temperature: Some(0.7),
