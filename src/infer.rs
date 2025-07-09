@@ -1,7 +1,6 @@
 use color_eyre::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::env;
 
 #[derive(Debug, Serialize)]
 pub struct CompletionRequest {
@@ -32,22 +31,22 @@ pub struct InferenceEngine {
     client: Client,
     api_key: String,
     base_url: String,
+    model_ident: String,
+    input: Option<String>,
+    output: Option<String>
 }
 
 impl InferenceEngine {
-    pub fn new() -> Result<Self> {
-        let api_key = env::var("OPENROUTER_API_KEY").map_err(|_| {
-            color_eyre::eyre::eyre!("OPENROUTER_API_KEY environment variable not set")
-        })?;
-
+    pub fn new(api_key: String, base_url: String, model_ident: String, input: Option<String>, output: Option<String>) -> Result<Self> {
         let client = Client::new();
-        let base_url = "https://openrouter.ai/api/v1".to_string();
-        //let base_url = "http://localhost:8888/v1".to_string();
 
         Ok(Self {
             client,
             api_key,
-            base_url,
+            input,
+            output,
+            model_ident,
+            base_url
         })
     }
 
@@ -78,12 +77,22 @@ impl InferenceEngine {
     }
 
     pub async fn imagine_command(&self, request: String) -> Result<CompletionResponse> {
+        let mut base_prompt = "You are system designed to emit bash commands, fulfilling the user's request. To achieve your goal, emit a single line command and only that command to achieve the user's request. When possible, use verbose command switches, to convey intent. You can safely assume whatever programs needed to achieve your goal are avaiable to you, such as jq ffmpeg, etc. When emitting your command, emit only the command, with no markdown formatting\n".to_owned();
+
+        if let Some(i) = self.input.as_ref() {
+            base_prompt.push_str(&format!("An output path has been provided, it is {i}"));
+        }
+
+        if let Some(o) = self.output.as_ref() {
+            base_prompt.push_str(&format!("An output path has been provided, it is {o}"));
+        }
+
         let request = CompletionRequest {
-            model: "google/gemini-2.5-flash".to_string(),
+            model: self.model_ident.clone(),
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content: "You are system designed to emit bash commands, fulfilling the user's request. To achieve your goal, emit a single line command and only that command to achieve the user's request. When possible, use verbose command switches, to convey intent. You can safely assume whatever programs needed to achieve your goal are avaiable to you, such as jq ffmpeg, etc. When emitting your command, emit only the command, with no markdown formatting".into()
+                    content: base_prompt
                 },
                 Message {
                     role: "user".to_string(),
@@ -99,7 +108,7 @@ impl InferenceEngine {
 
     pub async fn inspect_command(&self, request: String) -> Result<CompletionResponse> {
         let request = CompletionRequest {
-            model: "google/gemini-2.5-flash".to_string(),
+            model: self.model_ident.clone(),
             messages: vec![
                 Message {
                     role: "system".into(),

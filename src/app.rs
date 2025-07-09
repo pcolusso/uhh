@@ -29,8 +29,9 @@ pub struct App {
     pub safety_status: SafetyStatus,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    /// Constructs a new instance of [`App`].
+    pub fn new(client: InferenceEngine) -> Self {
         Self {
             running: true,
             focused_pane: 0,
@@ -40,20 +41,11 @@ impl Default for App {
             input_cursor: 0,
             response_cursor: 0,
             events: EventHandler::new(),
-            // TODO: Handle gracefully
-            client: InferenceEngine::new()
-                .unwrap_or_else(|e| panic!("Failed to create client: {}", e)),
+            client,
             is_loading_completion: false,
             is_loading_safety_check: false,
             safety_status: SafetyStatus::Unknown,
         }
-    }
-}
-
-impl App {
-    /// Constructs a new instance of [`App`].
-    pub fn new() -> Self {
-        Self::default()
     }
 
     /// Run the application's main loop.
