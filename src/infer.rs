@@ -1,8 +1,8 @@
 use color_eyre::Result;
 use reqwest::Client;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize)]
 pub struct CompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages: Option<Vec<Message>>,
@@ -56,6 +56,59 @@ pub struct CompletionRequest {
     pub user: Option<String>,
 }
 
+impl Default for CompletionRequest {
+    fn default() -> Self {
+        Self {
+            messages: Default::default(),
+            prompt: Default::default(),
+            model: Default::default(),
+            response_format: Default::default(),
+            stop: Default::default(),
+            stream: Some(false), // Ceebs
+            max_tokens: Default::default(),
+            temperature: Default::default(),
+            tools: Default::default(),
+            tool_choice: Default::default(),
+            seed: Default::default(),
+            top_p: Default::default(),
+            top_k: Default::default(),
+            frequency_penalty: Default::default(),
+            presence_penalty: Default::default(),
+            repetition_penalty: Default::default(),
+            logit_bias: Default::default(),
+            top_logprobs: Default::default(),
+            min_p: Default::default(),
+            top_a: Default::default(),
+            prediction: Default::default(),
+            transforms: Default::default(),
+            models: Default::default(),
+            route: Default::default(),
+            user: Default::default(),
+        }
+    }
+}
+
+impl CompletionResponse {
+    fn assume_single_choice(mut self) -> Choice {
+        debug_assert!(self.choices.len() == 1);
+        self.choices.pop().unwrap()
+    }
+
+    fn assume_single_text_chouce(mut self) -> Result<Choice> {
+        let choice = self.assume_single_choice();
+        match choice {
+            Choice::NonChat(_) => Err(color_eyre::eyre::eyre!("Non chat response")),
+            Choice::Streaming(_) => Err(color_eyre::eyre::eyre!("Unexpected stream")),
+            Choice::NonStreaming(r) => {
+                match r.message {
+                    Mess
+
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "role")]
 pub enum Message {
@@ -88,11 +141,20 @@ pub enum Message {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Content {
-    Text(String),
-    Parts(Vec<ContentPart>),
+impl Message {
+    fn to_string(&self) -> String {
+        let content = match self {
+            Message::Assistant { content, name, tool_calls } => content,
+            Message::Tool { content, tool_call_id, name } => { return content.clone(); },
+            Message::User { content, name } => content,
+            Message::System { content, name } => content
+        }
+
+        match content {
+            ContentPart::Text { text } => return text.clone()
+            _ => panic!("idk")
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -101,9 +163,7 @@ pub enum ContentPart {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "image_url")]
-    ImageUrl {
-        image_url: ImageUrl,
-    },
+    ImageUrl { image_url: ImageUrl },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -246,9 +306,6 @@ pub struct FunctionCall {
     pub arguments: String,
 }
 
-
-
-
 #[derive(Clone, Debug)]
 pub struct InferenceEngine {
     client: Client,
@@ -259,51 +316,6 @@ pub struct InferenceEngine {
     output: Option<String>,
 }
 
-impl CompletionResponse {
-    /// Helper method to extract text content from the first choice
-    pub fn get_text_content(&self) -> Option<String> {
-        self.choices.first().and_then(|choice| {
-            match choice {
-                Choice::NonStreaming(c) => {
-                    match &c.message {
-                        Message::Assistant { content, .. } => {
-                            match content {
-                                Content::Text(text) => Some(text.clone()),
-                                Content::Parts(parts) => {
-                                    // Extract text from first text part
-                                    parts.iter().find_map(|part| {
-                                        if let ContentPart::Text { text } = part {
-                                            Some(text.clone())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                }
-                            }
-                        }
-                        Message::System { content, .. } | Message::User { content, .. } => {
-                            match content {
-                                Content::Text(text) => Some(text.clone()),
-                                Content::Parts(parts) => {
-                                    parts.iter().find_map(|part| {
-                                        if let ContentPart::Text { text } = part {
-                                            Some(text.clone())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                }
-                            }
-                        }
-                        Message::Tool { content, .. } => Some(content.clone()),
-                    }
-                }
-                Choice::NonChat(c) => Some(c.text.clone()),
-                Choice::Streaming(_) => None, // Streaming not supported for text extraction
-            }
-        })
-    }
-}
 
 impl InferenceEngine {
     pub fn new(
