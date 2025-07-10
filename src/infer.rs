@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+use std::pin::Pin;
 use color_eyre::Result;
 use reqwest::Client;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::{DeserializeOwned, IntoDeserializer}, Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct CompletionRequest {
@@ -25,6 +27,7 @@ pub struct CompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    // Advanced optional params...
     pub seed: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
@@ -44,8 +47,13 @@ pub struct CompletionRequest {
     pub min_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_a: Option<f32>,
+
+    // Reduce latency by providing the model with a predicted output ?
+    // TODO: Mark not impl
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prediction: Option<Prediction>,
+
+    // OpenRouter exclusive params
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transforms: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,6 +64,7 @@ pub struct CompletionRequest {
     pub user: Option<String>,
 }
 
+// Doesn't seem to be a way to force OpenRouter to return only one choice..
 impl Default for CompletionRequest {
     fn default() -> Self {
         Self {
@@ -89,22 +98,35 @@ impl Default for CompletionRequest {
 }
 
 impl CompletionResponse {
-    fn assume_single_choice(mut self) -> Choice {
-        debug_assert!(self.choices.len() == 1);
+    pub fn assume_single_choice(mut self) -> Choice {
+        if self.choices.len() != 1 {
+            panic!("Expected exactly one choice, got {}", self.choices.len());
+        }
         self.choices.pop().unwrap()
     }
 
-    fn assume_single_text_chouce(mut self) -> Result<Choice> {
+    pub fn assume_single_text_choice(self) -> Result<String> {
         let choice = self.assume_single_choice();
         match choice {
             Choice::NonChat(_) => Err(color_eyre::eyre::eyre!("Non chat response")),
             Choice::Streaming(_) => Err(color_eyre::eyre::eyre!("Unexpected stream")),
-            Choice::NonStreaming(r) => {
-                match r.message {
-                    Mess
-
-                }
-            }
+            Choice::NonStreaming(r) => match r.message {
+                Message::Assistant { content, .. } => match content {
+                    Content::Text(text) => Ok(text),
+                    Content::Parts(parts) => {
+                        let text = parts
+                            .iter()
+                            .filter_map(|part| match part {
+                                ContentPart::Text { text } => Some(text.clone()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        Ok(text)
+                    }
+                },
+                _ => Err(color_eyre::eyre::eyre!("Expected assistant message")),
+            },
         }
     }
 }
@@ -142,19 +164,44 @@ pub enum Message {
 }
 
 impl Message {
+    // Helper to rip out just the text of a message, regardless of kind.
     fn to_string(&self) -> String {
         let content = match self {
-            Message::Assistant { content, name, tool_calls } => content,
-            Message::Tool { content, tool_call_id, name } => { return content.clone(); },
-            Message::User { content, name } => content,
-            Message::System { content, name } => content
-        }
+            Message::Assistant {
+                content,
+                name: _,
+                tool_calls: _,
+            } => content,
+            Message::Tool {
+                content,
+                tool_call_id: _,
+                name: _,
+            } => {
+                return content.clone();
+            }
+            Message::User { content, name: _ } => content,
+            Message::System { content, name: _ } => content,
+        };
 
         match content {
-            ContentPart::Text { text } => return text.clone()
-            _ => panic!("idk")
+            Content::Text(text) => text.clone(),
+            Content::Parts(parts) => parts
+                .iter()
+                .filter_map(|part| match part {
+                    ContentPart::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Content {
+    Text(String),
+    Parts(Vec<ContentPart>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -273,6 +320,7 @@ pub struct FunctionDescription {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    // Can we just hammer these down to strings?
     pub parameters: serde_json::Value,
 }
 
@@ -316,6 +364,43 @@ pub struct InferenceEngine {
     output: Option<String>,
 }
 
+type SyncToolFunc = fn(String) -> String;
+type AsyncToolFunc = fn(String) -> Pin<Box<dyn Future<Output = String>>>;
+
+enum ToolFunc {
+    SyncTool(SyncToolFunc),
+    AsyncTool(AsyncToolFunc)
+}
+
+struct ToolBelt {
+    tools: HashMap<String, ToolFunc>,
+    desc: HashMap<String, FunctionDescription>
+}
+
+impl ToolBelt {
+    async fn call(
+        &self,
+        ToolCall {
+            id,
+            call_type,
+            function,
+        }: ToolCall,
+    ) -> Message {
+        match self.tools.get(&function.name) {
+            Some(ToolFunc::SyncTool(f)) => {
+                let res = f(function.arguments);
+                Message::Tool { content: res, name: None, tool_call_id: "undef".into() }
+            }
+            Some(ToolFunc::AsyncTool(f)) => {
+                let res = f(function.arguments).await;
+                Message::Tool { content: res, tool_call_id: "undef".into(), name: None }
+            }
+            None => {
+                Message::Tool { content: "Tool does not exist".into(), tool_call_id: "undef".into(), name: None }
+            }
+        }
+    }
+}
 
 impl InferenceEngine {
     pub fn new(
@@ -369,7 +454,7 @@ impl InferenceEngine {
         Ok(completion_response)
     }
 
-    pub async fn imagine_command(&self, request: String) -> Result<CompletionResponse> {
+    pub async fn imagine_command(&self, request: String) -> Result<String> {
         let mut base_prompt = "You are system designed to emit bash commands, fulfilling the user's request. To achieve your goal, emit a single line command and only that command to achieve the user's request. When possible, use verbose command switches, to convey intent. You can safely assume whatever programs needed to achieve your goal are avaiable to you, such as jq ffmpeg, etc. When emitting your command, emit only the command, with no markdown formatting\n".to_owned();
 
         if let Some(i) = self.input.as_ref() {
@@ -397,10 +482,12 @@ impl InferenceEngine {
             ..Default::default()
         };
 
-        self.completion(request).await
+        // TODO: Asset final response is from Assistant
+        let response: CompletionResponse = self.completion(request).await?;
+        response.assume_single_text_choice()
     }
 
-    pub async fn inspect_command(&self, request: String) -> Result<CompletionResponse> {
+    pub async fn inspect_command(&self, request: String) -> Result<String> {
         let request = CompletionRequest {
             model: Some(self.model_ident.clone()),
             messages: Some(vec![
@@ -418,6 +505,9 @@ impl InferenceEngine {
             ..Default::default()
         };
 
-        self.completion(request).await
+        // TODO: Asset final response is from Assistant
+
+        let response: CompletionResponse = self.completion(request).await?;
+        response.assume_single_text_choice()
     }
 }
