@@ -59,9 +59,17 @@ impl App {
             match self.events.next().await? {
                 Event::Tick => self.tick(),
                 Event::Crossterm(event) => match event {
-                    crossterm::event::Event::Key(key_event) => self.handle_key_events(key_event)?,
-                    _ => {}
-                },
+                    crossterm::event::Event::Key(k) if k.kind == crossterm::event::KeyEventKind::Press => {
+                        self.handle_key_events(k)?
+                    },
+                    crossterm::event::Event::Key(_k) => {
+                        // TODO: Handle repeat, release
+                    }
+                    crossterm::event::Event::Paste(_s) => {
+                        // TODO: Handle paste.
+                    }
+                    _ => {},
+                }
                 Event::App(app_event) => match app_event {
                     AppEvent::Quit => self.quit(),
                     AppEvent::RequestCompletion(input) => {
